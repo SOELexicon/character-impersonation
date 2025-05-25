@@ -1,11 +1,24 @@
-import { generateQuietPrompt } from "../../../../script.js";
-import { SlashCommandParser } from "../../../../app/slash-commands/SlashCommandParser.js";
-import { SlashCommand } from "../../../../app/slash-commands/SlashCommand.js";
-import { ARGUMENT_TYPE, SlashCommandArgument } from "../../../../app/slash-commands/SlashCommandArgument.js";
-import { callPopup, showLoader, hideLoader } from "../../../../script.js";
+// Import functions from SillyTavern
+import { generateQuietPrompt, callPopup, showLoader, hideLoader, printMessages } from "../../../../script.js";
 
 // Extension module name
 const MODULE_NAME = 'character_impersonation';
+
+// Extension diagnostic function
+function runDiagnostics() {
+    const diagnostics = {
+        sillyTavernContext: typeof SillyTavern !== 'undefined' && SillyTavern.getContext,
+        generateQuietPrompt: typeof generateQuietPrompt === 'function',
+        jQuery: typeof $ !== 'undefined',
+        registerSlashCommand: typeof registerSlashCommand === 'function',
+        callPopup: typeof callPopup === 'function',
+        showLoader: typeof showLoader === 'function',
+        hideLoader: typeof hideLoader === 'function'
+    };
+    
+    console.log('[Character Impersonation] Diagnostics:', diagnostics);
+    return diagnostics;
+}
 
 // Default settings
 const defaultSettings = {
@@ -178,11 +191,18 @@ async function impersonateCharacter(input, customPrompt = null) {
                 context.chat.push(newMessage);
                 context.saveChat();
                 
-                // Refresh the chat display
-                if (typeof context.printMessages === 'function') {
-                    context.printMessages();
-                } else if (typeof printMessages === 'function') {
-                    printMessages();
+                // Try multiple methods to refresh the chat display
+                try {
+                    if (typeof printMessages === 'function') {
+                        printMessages();
+                    } else if (context.printMessages && typeof context.printMessages === 'function') {
+                        context.printMessages();
+                    } else {
+                        // Fallback: trigger a chat refresh event
+                        $(document).trigger('chatLoaded');
+                    }
+                } catch (refreshError) {
+                    console.warn('[Character Impersonation] Could not refresh chat display:', refreshError);
                 }
             }
             
@@ -240,95 +260,118 @@ function createSettingsHTML() {
 
 // Initialize settings UI
 function initSettingsUI() {
-    const settingsHtml = createSettingsHTML();
-    $('#extensions_settings2').append(settingsHtml);
-    
-    // Bind event handlers
-    $('#ci_save_settings').on('click', function() {
-        extensionSettings.enabled = $('#ci_enabled').prop('checked');
-        extensionSettings.includeCharacterCard = $('#ci_include_card').prop('checked');
-        extensionSettings.maxHistoryMessages = parseInt($('#ci_max_history').val()) || 10;
-        extensionSettings.defaultSystemPrompt = $('#ci_system_prompt').val();
-        extensionSettings.customSystemPrompt = $('#ci_custom_prompt').val();
-        
-        saveSettings();
-        callPopup('Character Impersonation settings saved!', 'text');
-    });
-    
-    $('#ci_reset_settings').on('click', function() {
-        if (confirm('Reset all settings to defaults?')) {
-            Object.assign(extensionSettings, defaultSettings);
-            $('#ci_enabled').prop('checked', extensionSettings.enabled);
-            $('#ci_include_card').prop('checked', extensionSettings.includeCharacterCard);
-            $('#ci_max_history').val(extensionSettings.maxHistoryMessages);
-            $('#ci_system_prompt').val(extensionSettings.defaultSystemPrompt);
-            $('#ci_custom_prompt').val(extensionSettings.customSystemPrompt);
-            
-            saveSettings();
-            callPopup('Settings reset to defaults!', 'text');
+    // Wait for the extensions settings panel to be available
+    const checkForSettingsPanel = () => {
+        // Try multiple possible locations for the settings panel
+        let settingsPanel = $('#extensions_settings2');
+        if (settingsPanel.length === 0) {
+            settingsPanel = $('#extensions_settings');
         }
-    });
+        if (settingsPanel.length === 0) {
+            settingsPanel = $('.extensions_settings');
+        }
+        
+        if (settingsPanel.length > 0) {
+            try {
+                const settingsHtml = createSettingsHTML();
+                settingsPanel.append(settingsHtml);
+                
+                // Bind event handlers with error handling
+                $('#ci_save_settings').on('click', function() {
+                    try {
+                        extensionSettings.enabled = $('#ci_enabled').prop('checked');
+                        extensionSettings.includeCharacterCard = $('#ci_include_card').prop('checked');
+                        extensionSettings.maxHistoryMessages = parseInt($('#ci_max_history').val()) || 10;
+                        extensionSettings.defaultSystemPrompt = $('#ci_system_prompt').val();
+                        extensionSettings.customSystemPrompt = $('#ci_custom_prompt').val();
+                        
+                        saveSettings();
+                        
+                        // Use a simple alert if callPopup is not available
+                        if (typeof callPopup === 'function') {
+                            callPopup('Character Impersonation settings saved!', 'text');
+                        } else {
+                            alert('Character Impersonation settings saved!');
+                        }
+                    } catch (error) {
+                        console.error('[Character Impersonation] Error saving settings:', error);
+                        alert('Error saving settings: ' + error.message);
+                    }
+                });
+                
+                $('#ci_reset_settings').on('click', function() {
+                    if (confirm('Reset all settings to defaults?')) {
+                        try {
+                            Object.assign(extensionSettings, defaultSettings);
+                            $('#ci_enabled').prop('checked', extensionSettings.enabled);
+                            $('#ci_include_card').prop('checked', extensionSettings.includeCharacterCard);
+                            $('#ci_max_history').val(extensionSettings.maxHistoryMessages);
+                            $('#ci_system_prompt').val(extensionSettings.defaultSystemPrompt);
+                            $('#ci_custom_prompt').val(extensionSettings.customSystemPrompt);
+                            
+                            saveSettings();
+                            
+                            if (typeof callPopup === 'function') {
+                                callPopup('Settings reset to defaults!', 'text');
+                            } else {
+                                alert('Settings reset to defaults!');
+                            }
+                        } catch (error) {
+                            console.error('[Character Impersonation] Error resetting settings:', error);
+                            alert('Error resetting settings: ' + error.message);
+                        }
+                    }
+                });
+                
+                console.log('[Character Impersonation] Settings UI initialized');
+            } catch (error) {
+                console.error('[Character Impersonation] Error creating settings UI:', error);
+            }
+        } else {
+            // Retry after a short delay if no settings panel found
+            setTimeout(checkForSettingsPanel, 1000);
+        }
+    };
+    
+    // Start checking for the settings panel
+    if (typeof $ !== 'undefined') {
+        checkForSettingsPanel();
+    } else {
+        console.warn('[Character Impersonation] jQuery not available, settings UI will not be initialized');
+    }
 }
 
-// Register slash commands
+// Register slash commands using the legacy method for better compatibility
 function registerSlashCommands() {
-    // Main impersonation command
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'impersonate',
-        aliases: ['imp', 'roleplay'],
-        callback: async (namedArgs, unnamedArgs) => {
+    // Check if registerSlashCommand is available (legacy method)
+    if (typeof registerSlashCommand === 'function') {
+        // Main impersonation command
+        registerSlashCommand('impersonate', async (args, value) => {
             if (!extensionSettings.enabled) {
                 return "Character Impersonation extension is disabled. Enable it in the extension settings.";
             }
             
-            const input = unnamedArgs.toString().trim();
-            const customPrompt = namedArgs.prompt || null;
-            
             try {
+                // Parse arguments - simple approach
+                let customPrompt = null;
+                let input = value || '';
+                
+                // Check for prompt= parameter
+                if (args && args.prompt) {
+                    customPrompt = args.prompt;
+                }
+                
                 const response = await impersonateCharacter(input, customPrompt);
                 return `Impersonation complete. Response generated as ${getCurrentCharacterInfo()?.name || 'character'}.`;
             } catch (error) {
+                console.error('[Character Impersonation] Error:', error);
                 return `Error: ${error.message}`;
             }
-        },
-        namedArgumentList: [
-            SlashCommandArgument.fromProps({
-                name: 'prompt',
-                description: 'Custom system prompt to use instead of the default',
-                typeList: [ARGUMENT_TYPE.STRING],
-                defaultValue: '',
-            }),
-        ],
-        unnamedArgumentList: [
-            SlashCommandArgument.fromProps({
-                description: 'The message or situation to respond to (optional)',
-                typeList: [ARGUMENT_TYPE.STRING],
-                isRequired: false,
-            }),
-        ],
-        helpString: `
-            <div>
-                <div>Makes the current character respond to a message or situation using the configured LLM.</div>
-                <div>
-                    <strong>Usage:</strong>
-                    <ul>
-                        <li><pre><code>/impersonate What do you think about the weather?</code></pre></li>
-                        <li><pre><code>/impersonate prompt="Be more cheerful than usual" How are you feeling?</code></pre></li>
-                        <li><pre><code>/imp</code></pre> (generates a response based on recent chat history)</li>
-                    </ul>
-                </div>
-                <div><strong>Note:</strong> Requires a character to be selected and the extension to be enabled.</div>
-            </div>
-        `,
-        returns: 'completion message'
-    }));
-    
-    // Command to set custom system prompt
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'setimprompt',
-        aliases: ['setprompt'],
-        callback: (namedArgs, unnamedArgs) => {
-            const newPrompt = unnamedArgs.toString().trim();
+        }, ['imp', 'roleplay'], '<span class="monospace">prompt=(custom system prompt)</span> (message) – Generate a response as your current character', true, true);
+        
+        // Command to set custom system prompt
+        registerSlashCommand('setimprompt', (args, value) => {
+            const newPrompt = value?.trim();
             if (!newPrompt) {
                 return `Current custom system prompt: ${extensionSettings.customSystemPrompt || '(none - using default)'}`;
             }
@@ -336,49 +379,69 @@ function registerSlashCommands() {
             extensionSettings.customSystemPrompt = newPrompt;
             saveSettings();
             return `Custom system prompt updated: ${newPrompt}`;
-        },
-        unnamedArgumentList: [
-            SlashCommandArgument.fromProps({
-                description: 'The new custom system prompt to use for impersonation',
-                typeList: [ARGUMENT_TYPE.STRING],
-                isRequired: false,
-            }),
-        ],
-        helpString: `
-            <div>
-                <div>Sets or views the custom system prompt for character impersonation.</div>
-                <div>
-                    <strong>Usage:</strong>
-                    <ul>
-                        <li><pre><code>/setimprompt</code></pre> (view current prompt)</li>
-                        <li><pre><code>/setimprompt You are feeling very happy today and respond enthusiastically to everything.</code></pre></li>
-                    </ul>
-                </div>
-            </div>
-        `,
-        returns: 'confirmation message'
-    }));
+        }, ['setprompt'], '(new prompt) – Set or view the custom system prompt for impersonation', true, true);
+        
+        console.log('[Character Impersonation] Slash commands registered successfully using legacy method');
+    } else {
+        console.warn('[Character Impersonation] registerSlashCommand not available, commands not registered');
+    }
 }
 
 // Extension initialization
-async function init() {
-    console.log('[Character Impersonation] Initializing extension...');
-    
-    // Initialize settings
-    initSettings();
-    
-    // Register slash commands
-    registerSlashCommands();
-    
-    // Initialize settings UI when extensions panel loads
-    $(document).ready(() => {
-        setTimeout(() => {
-            initSettingsUI();
-        }, 1000);
-    });
-    
-    console.log('[Character Impersonation] Extension initialized successfully!');
+function init() {
+    try {
+        console.log('[Character Impersonation] Starting extension initialization...');
+        
+        // Run diagnostics to check available functions
+        const diagnostics = runDiagnostics();
+        
+        // Check if we have access to SillyTavern context
+        if (!diagnostics.sillyTavernContext) {
+            throw new Error('SillyTavern context not available');
+        }
+        
+        // Initialize settings
+        initSettings();
+        console.log('[Character Impersonation] Settings initialized');
+        
+        // Register slash commands
+        registerSlashCommands();
+        
+        // Initialize settings UI when ready
+        if (diagnostics.jQuery) {
+            // Use multiple methods to ensure UI initialization
+            $(document).ready(() => {
+                setTimeout(() => {
+                    initSettingsUI();
+                }, 1000);
+            });
+            
+            // Also try when extensions are loaded
+            $(document).on('extensionsReady', () => {
+                setTimeout(() => {
+                    initSettingsUI();
+                }, 500);
+            });
+        } else {
+            // Fallback if jQuery is not available
+            setTimeout(() => {
+                initSettingsUI();
+            }, 2000);
+        }
+        
+        console.log('[Character Impersonation] Extension initialized successfully!');
+        return true;
+        
+    } catch (error) {
+        console.error('[Character Impersonation] Failed to initialize extension:', error);
+        // Don't throw the error to prevent the extension from being disabled
+        return false;
+    }
 }
 
-// Start the extension
-init();
+// Start the extension with error handling
+try {
+    init();
+} catch (error) {
+    console.error('[Character Impersonation] Critical error during extension startup:', error);
+}

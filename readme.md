@@ -96,6 +96,40 @@ The following variables are automatically replaced in system prompts:
 
 ## Troubleshooting
 
+### Extension is Greyed Out / Can't Be Enabled
+
+If the extension appears in the Extensions panel but is greyed out and can't be enabled:
+
+1. **Check the Browser Console**: 
+   - Open Developer Tools (F12)
+   - Look at the Console tab for any error messages starting with `[Character Impersonation]`
+   - Common errors and solutions:
+
+2. **Check File Structure**:
+   ```
+   data/default-user/extensions/character-impersonation/
+   ├── manifest.json
+   ├── index.js
+   ├── style.css
+   └── README.md
+   ```
+
+3. **Verify Extensions are Enabled**:
+   - Make sure `enableExtensions = true` in your SillyTavern `config.conf` file
+   - Restart SillyTavern after making this change
+
+4. **Check SillyTavern Version**:
+   - This extension requires a recent version of SillyTavern
+   - Update to the latest release or staging branch
+
+5. **Manual Diagnostics**:
+   - Open the browser console and type: `typeof SillyTavern`
+   - It should return `"object"` - if it returns `"undefined"`, SillyTavern hasn't loaded properly
+
+6. **Try Reloading**:
+   - Refresh the SillyTavern page
+   - Check if the extension becomes available after a full page reload
+
 ### "No character selected" Error
 - Make sure you have a character loaded in your current chat
 - The extension requires an active character to impersonate
@@ -109,6 +143,11 @@ The following variables are automatically replaced in system prompts:
 - Ensure `enableExtensions` is set to `true` in your SillyTavern `config.conf`
 - Check the browser console for any error messages
 - Verify all files are in the correct directory structure
+
+### Settings Panel Not Appearing
+- The settings may take a few seconds to appear after enabling the extension
+- Try refreshing the Extensions panel
+- Check the console for any UI-related errors
 
 ## Advanced Usage
 
