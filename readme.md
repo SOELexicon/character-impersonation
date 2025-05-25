@@ -130,6 +130,70 @@ If the extension appears in the Extensions panel but is greyed out and can't be 
    - Refresh the SillyTavern page
    - Check if the extension becomes available after a full page reload
 
+### Extension is Enabled but Nothing Happens
+
+If the extension is enabled but you don't see slash commands or the settings panel:
+
+1. **Run the Test Function**:
+   - Open browser console (F12)
+   - Type: `testCharacterImpersonation()`
+   - This will show what's working and what isn't
+
+2. **Check Console Logs**:
+   - Look for messages starting with `[Character Impersonation]`
+   - The extension logs its initialization progress
+
+3. **Test Slash Commands**:
+   - Try typing `/help slash` in SillyTavern chat to see all available commands
+   - Look for `/impersonate` in the list
+   - If it's not there, the command registration failed
+
+4. **Check Settings Panel**:
+   - The settings may take up to 20 seconds to appear
+   - Look in the Extensions panel for "Character Impersonation Settings"
+   - If it doesn't appear, check console for UI initialization errors
+
+5. **Manual Command Test**:
+   - Try typing `/impersonate Hello` in chat
+   - Check console for any error messages
+
+### Common Issues and Solutions
+
+**"SillyTavern context not available"**
+- Wait a few seconds for SillyTavern to fully load
+- Refresh the page and try again
+
+**"generateQuietPrompt function not available"**
+- Your SillyTavern version might be too old
+- Update to the latest version
+
+**"No character selected"**
+- Load a character before using the extension
+- The extension needs an active character to work
+
+**Settings panel not appearing**
+- Check console for `Settings panel search attempt` messages
+- Try refreshing the Extensions panel
+
+### Debug Commands
+
+You can use these commands in the browser console for debugging:
+
+```javascript
+// Test the extension
+testCharacterImpersonation()
+
+// Check if SillyTavern is available
+typeof SillyTavern
+
+// Check specific functions
+typeof generateQuietPrompt
+typeof registerSlashCommand
+
+// Check extension status
+SillyTavern.getContext().extensionSettings.character_impersonation
+```
+
 ### "No character selected" Error
 - Make sure you have a character loaded in your current chat
 - The extension requires an active character to impersonate

@@ -1,6 +1,3 @@
-// Import functions from SillyTavern
-import { generateQuietPrompt, callPopup, showLoader, hideLoader, printMessages } from "../../../../script.js";
-
 // Extension module name
 const MODULE_NAME = 'character_impersonation';
 
@@ -139,7 +136,10 @@ function buildSystemPrompt(customPrompt = null) {
 // Main impersonation function
 async function impersonateCharacter(input, customPrompt = null) {
     try {
-        showLoader();
+        // Use fallback if showLoader isn't available
+        if (typeof showLoader === 'function') {
+            showLoader();
+        }
         
         const character = getCurrentCharacterInfo();
         if (!character) {
@@ -163,16 +163,31 @@ async function impersonateCharacter(input, customPrompt = null) {
         fullPrompt += `\n\nRespond as ${character.name}:`;
         
         // Generate response using SillyTavern's current LLM
-        const response = await generateQuietPrompt(fullPrompt);
+        let response;
+        if (typeof generateQuietPrompt === 'function') {
+            response = await generateQuietPrompt(fullPrompt);
+        } else {
+            throw new Error("generateQuietPrompt function not available. Make sure you're using a compatible version of SillyTavern.");
+        }
         
-        hideLoader();
+        // Use fallback if hideLoader isn't available
+        if (typeof hideLoader === 'function') {
+            hideLoader();
+        }
         
         if (response && response.trim()) {
             // Display the response in a popup or insert it into chat
-            const shouldInsertToChat = await callPopup(
-                `<h3>${character.name} (Impersonated) says:</h3><br><div style="background: #f0f0f0; padding: 10px; border-radius: 5px; margin: 10px 0;">${response}</div><br>Would you like to insert this response into the chat?`,
-                'confirm'
-            );
+            let shouldInsertToChat = false;
+            
+            if (typeof callPopup === 'function') {
+                shouldInsertToChat = await callPopup(
+                    `<h3>${character.name} (Impersonated) says:</h3><br><div style="background: #f0f0f0; padding: 10px; border-radius: 5px; margin: 10px 0;">${response}</div><br>Would you like to insert this response into the chat?`,
+                    'confirm'
+                );
+            } else {
+                // Fallback to native browser confirm
+                shouldInsertToChat = confirm(`${character.name} (Impersonated) says:\n\n${response}\n\nWould you like to insert this response into the chat?`);
+            }
             
             if (shouldInsertToChat) {
                 // Insert as character message
@@ -189,7 +204,11 @@ async function impersonateCharacter(input, customPrompt = null) {
                 };
                 
                 context.chat.push(newMessage);
-                context.saveChat();
+                
+                // Try to save the chat
+                if (typeof context.saveChat === 'function') {
+                    context.saveChat();
+                }
                 
                 // Try multiple methods to refresh the chat display
                 try {
@@ -197,7 +216,7 @@ async function impersonateCharacter(input, customPrompt = null) {
                         printMessages();
                     } else if (context.printMessages && typeof context.printMessages === 'function') {
                         context.printMessages();
-                    } else {
+                    } else if (typeof $ !== 'undefined') {
                         // Fallback: trigger a chat refresh event
                         $(document).trigger('chatLoaded');
                     }
@@ -212,9 +231,20 @@ async function impersonateCharacter(input, customPrompt = null) {
         }
         
     } catch (error) {
-        hideLoader();
+        // Use fallback if hideLoader isn't available
+        if (typeof hideLoader === 'function') {
+            hideLoader();
+        }
+        
         console.error('[Character Impersonation] Error:', error);
-        callPopup(`Error during character impersonation: ${error.message}`, 'text');
+        
+        // Use fallback for error display
+        if (typeof callPopup === 'function') {
+            callPopup(`Error during character impersonation: ${error.message}`, 'text');
+        } else {
+            alert(`Error during character impersonation: ${error.message}`);
+        }
+        
         throw error;
     }
 }
@@ -260,8 +290,12 @@ function createSettingsHTML() {
 
 // Initialize settings UI
 function initSettingsUI() {
+    console.log('[Character Impersonation] Attempting to initialize settings UI...');
+    
     // Wait for the extensions settings panel to be available
-    const checkForSettingsPanel = () => {
+    const checkForSettingsPanel = (attempts = 0) => {
+        const maxAttempts = 20; // Try for up to 20 seconds
+        
         // Try multiple possible locations for the settings panel
         let settingsPanel = $('#extensions_settings2');
         if (settingsPanel.length === 0) {
@@ -270,9 +304,20 @@ function initSettingsUI() {
         if (settingsPanel.length === 0) {
             settingsPanel = $('.extensions_settings');
         }
+        if (settingsPanel.length === 0) {
+            settingsPanel = $('#extensions_settings_panel');
+        }
+        
+        console.log(`[Character Impersonation] Settings panel search attempt ${attempts + 1}, found: ${settingsPanel.length} panels`);
         
         if (settingsPanel.length > 0) {
             try {
+                // Check if our settings are already added
+                if ($('.character-impersonation-settings').length > 0) {
+                    console.log('[Character Impersonation] Settings UI already exists, skipping initialization');
+                    return;
+                }
+                
                 const settingsHtml = createSettingsHTML();
                 settingsPanel.append(settingsHtml);
                 
@@ -323,13 +368,15 @@ function initSettingsUI() {
                     }
                 });
                 
-                console.log('[Character Impersonation] Settings UI initialized');
+                console.log('[Character Impersonation] Settings UI initialized successfully');
             } catch (error) {
                 console.error('[Character Impersonation] Error creating settings UI:', error);
             }
-        } else {
+        } else if (attempts < maxAttempts) {
             // Retry after a short delay if no settings panel found
-            setTimeout(checkForSettingsPanel, 1000);
+            setTimeout(() => checkForSettingsPanel(attempts + 1), 1000);
+        } else {
+            console.warn('[Character Impersonation] Could not find settings panel after', maxAttempts, 'attempts. Settings UI will not be available.');
         }
     };
     
@@ -401,16 +448,34 @@ function init() {
         }
         
         // Initialize settings
-        initSettings();
-        console.log('[Character Impersonation] Settings initialized');
+        try {
+            initSettings();
+            console.log('[Character Impersonation] Settings initialized successfully');
+        } catch (settingsError) {
+            console.error('[Character Impersonation] Failed to initialize settings:', settingsError);
+            // Continue anyway, maybe we can still register commands
+        }
         
         // Register slash commands
-        registerSlashCommands();
+        try {
+            registerSlashCommands();
+            console.log('[Character Impersonation] Slash commands registration attempted');
+        } catch (commandError) {
+            console.error('[Character Impersonation] Failed to register slash commands:', commandError);
+        }
         
         // Initialize settings UI when ready
         if (diagnostics.jQuery) {
+            console.log('[Character Impersonation] jQuery available, setting up UI initialization...');
+            
+            // Try immediate initialization
+            setTimeout(() => {
+                initSettingsUI();
+            }, 500);
+            
             // Use multiple methods to ensure UI initialization
             $(document).ready(() => {
+                console.log('[Character Impersonation] Document ready, attempting UI init...');
                 setTimeout(() => {
                     initSettingsUI();
                 }, 1000);
@@ -418,18 +483,31 @@ function init() {
             
             // Also try when extensions are loaded
             $(document).on('extensionsReady', () => {
+                console.log('[Character Impersonation] Extensions ready event, attempting UI init...');
                 setTimeout(() => {
                     initSettingsUI();
                 }, 500);
             });
+            
+            // Additional event listeners for various extension loading events
+            $(document).on('extensionsLoaded', () => {
+                console.log('[Character Impersonation] Extensions loaded event, attempting UI init...');
+                setTimeout(() => {
+                    initSettingsUI();
+                }, 500);
+            });
+            
         } else {
+            console.warn('[Character Impersonation] jQuery not available, using fallback UI initialization');
             // Fallback if jQuery is not available
             setTimeout(() => {
                 initSettingsUI();
             }, 2000);
         }
         
-        console.log('[Character Impersonation] Extension initialized successfully!');
+        console.log('[Character Impersonation] Extension initialization completed!');
+        console.log('[Character Impersonation] Available commands: /impersonate, /imp, /roleplay, /setimprompt, /setprompt');
+        
         return true;
         
     } catch (error) {
@@ -439,9 +517,47 @@ function init() {
     }
 }
 
+// Make sure the extension starts after SillyTavern is ready
+function waitForSillyTavern() {
+    if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+        console.log('[Character Impersonation] SillyTavern detected, starting extension...');
+        init();
+    } else {
+        console.log('[Character Impersonation] Waiting for SillyTavern...');
+        setTimeout(waitForSillyTavern, 100);
+    }
+}
+
+// Test function for debugging (can be called from console)
+window.testCharacterImpersonation = function() {
+    console.log('[Character Impersonation] Running diagnostic test...');
+    
+    const diagnostics = runDiagnostics();
+    console.log('Diagnostics:', diagnostics);
+    
+    try {
+        const context = getContext();
+        console.log('SillyTavern context:', context);
+        
+        const character = getCurrentCharacterInfo();
+        console.log('Current character:', character);
+        
+        console.log('Extension settings:', extensionSettings);
+        
+        const chatHistory = getChatHistory(5);
+        console.log('Recent chat history:', chatHistory);
+        
+        console.log('[Character Impersonation] Test completed successfully');
+        return true;
+    } catch (error) {
+        console.error('[Character Impersonation] Test failed:', error);
+        return false;
+    }
+};
+
 // Start the extension with error handling
 try {
-    init();
+    waitForSillyTavern();
 } catch (error) {
     console.error('[Character Impersonation] Critical error during extension startup:', error);
 }
