@@ -249,7 +249,221 @@ async function impersonateCharacter(input, customPrompt = null) {
     }
 }
 
-// Create settings UI
+// Create and show impersonation modal
+function showImpersonationModal() {
+    if (!extensionSettings.enabled) {
+        alert("Character Impersonation extension is disabled. Enable it in the extension settings.");
+        return;
+    }
+    
+    const character = getCurrentCharacterInfo();
+    if (!character) {
+        alert("No character selected. Please select a character first.");
+        return;
+    }
+    
+    const modalHtml = `
+        <div id="impersonation_modal" class="modal-bg">
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h3>Character Roleplay - ${character.name}</h3>
+                    <span class="modal-close" onclick="$('#impersonation_modal').remove();">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 15px;">
+                        <label for="imp_situation">Situation or Message to Respond To:</label>
+                        <textarea id="imp_situation" rows="3" style="width: 100%; margin-top: 5px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" placeholder="Describe the situation or enter a message for ${character.name} to respond to..."></textarea>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label for="imp_custom_prompt">Custom Instructions (optional):</label>
+                        <textarea id="imp_custom_prompt" rows="2" style="width: 100%; margin-top: 5px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" placeholder="e.g., Be more cheerful than usual, You're feeling tired, etc."></textarea>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px; font-size: 12px; color: #666;">
+                        <strong>Current System Prompt:</strong><br>
+                        <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; margin-top: 5px; max-height: 100px; overflow-y: auto;">
+                            ${(extensionSettings.customSystemPrompt || extensionSettings.defaultSystemPrompt).replace(/\{\{char\}\}/g, character.name)}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="imp_generate_btn" class="modal-button modal-button-primary">Generate Response</button>
+                    <button onclick="$('#impersonation_modal').remove();" class="modal-button">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove any existing modal
+    $('#impersonation_modal').remove();
+    
+    // Add modal to body
+    $('body').append(modalHtml);
+    
+    // Bind the generate button
+    $('#imp_generate_btn').on('click', async function() {
+        const situation = $('#imp_situation').val().trim();
+        const customPrompt = $('#imp_custom_prompt').val().trim();
+        
+        try {
+            $(this).prop('disabled', true).text('Generating...');
+            
+            const response = await impersonateCharacter(situation, customPrompt || null);
+            
+            // Close modal
+            $('#impersonation_modal').remove();
+            
+        } catch (error) {
+            console.error('[Character Impersonation] Modal error:', error);
+            $(this).prop('disabled', false).text('Generate Response');
+        }
+    });
+    
+    // Close modal when clicking outside
+    $('#impersonation_modal').on('click', function(e) {
+        if (e.target === this) {
+            $(this).remove();
+        }
+    });
+    
+    // Focus on the situation input
+    setTimeout(() => {
+        $('#imp_situation').focus();
+    }, 100);
+}
+
+// Add option to message options menu (three dots)
+function addToMessageOptionsMenu() {
+    // Wait for message options to be available and hook into them
+    const checkAndAddOption = () => {
+        // Try to find message option menus when they appear
+        $(document).off('click.character_impersonation').on('click.character_impersonation', '.mes_edit_buttons .mes_edit_cancel, .mes_edit_buttons .fa-ellipsis-h, .mes_edit_buttons .mes_edit', function(e) {
+            setTimeout(() => {
+                // Look for the options menu or edit menu
+                const optionsMenu = $('.mes_edit_buttons .edit_textarea_buttons, .mes_edit_buttons');
+                
+                if (optionsMenu.length > 0 && !optionsMenu.find('.character_impersonation_option').length) {
+                    const character = getCurrentCharacterInfo();
+                    if (character && extensionSettings.enabled) {
+                        const roleplayButton = $(`
+                            <div class="character_impersonation_option" style="margin-top: 5px;">
+                                <button class="menu_button" onclick="window.showImpersonationModal ? window.showImpersonationModal() : console.error('Modal function not available')" style="width: 100%;">
+                                    <i class="fa fa-theater-masks"></i> Roleplay as ${character.name}
+                                </button>
+                            </div>
+                        `);
+                        optionsMenu.append(roleplayButton);
+                    }
+                }
+            }, 100);
+        });
+    };
+    
+    // Also try to add to the chat options panel if it exists
+    const addToChatOptions = () => {
+        const chatOptions = $('#options_panel, .options_panel, #chat_options, .chat_options');
+        if (chatOptions.length > 0 && !chatOptions.find('.character_impersonation_chat_option').length) {
+            const character = getCurrentCharacterInfo();
+            if (character && extensionSettings.enabled) {
+                const roleplayButton = $(`
+                    <div class="character_impersonation_chat_option" style="margin: 5px 0;">
+                        <button class="menu_button" onclick="window.showImpersonationModal ? window.showImpersonationModal() : console.error('Modal function not available')" style="width: 100%;">
+                            <i class="fa fa-theater-masks"></i> Roleplay as ${character.name}
+                        </button>
+                    </div>
+                `);
+                chatOptions.append(roleplayButton);
+            }
+        }
+    };
+    
+    // Try to add to various possible menu locations
+    checkAndAddOption();
+    addToChatOptions();
+    
+    // Also check periodically for new menus
+    setInterval(() => {
+        addToChatOptions();
+    }, 2000);
+}
+
+// Add floating button to chat interface
+function addFloatingButton() {
+    // Check if button already exists
+    if ($('#character_impersonation_float_btn').length > 0) {
+        return;
+    }
+    
+    const character = getCurrentCharacterInfo();
+    if (!character || !extensionSettings.enabled) {
+        return;
+    }
+    
+    const floatingButton = $(`
+        <div id="character_impersonation_float_btn" style="
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: var(--SmartThemeBlurTintColor, #444);
+            border: 2px solid var(--SmartThemeBorderColor, #666);
+            border-radius: 50px;
+            padding: 10px 15px;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            color: var(--SmartThemeColor, #fff);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        ">
+            <i class="fa fa-theater-masks"></i>
+            <span>Roleplay</span>
+        </div>
+    `);
+    
+    // Add hover effect
+    floatingButton.hover(
+        function() {
+            $(this).css({
+                'transform': 'scale(1.05)',
+                'background': 'var(--SmartThemeEmColor, #4a9eff)'
+            });
+        },
+        function() {
+            $(this).css({
+                'transform': 'scale(1)',
+                'background': 'var(--SmartThemeBlurTintColor, #444)'
+            });
+        }
+    );
+    
+    // Add click handler
+    floatingButton.on('click', showImpersonationModal);
+    
+    $('body').append(floatingButton);
+}
+
+// Remove floating button if needed
+function removeFloatingButton() {
+    $('#character_impersonation_float_btn').remove();
+}
+
+// Update UI elements when character changes
+function updateUIElements() {
+    // Remove existing elements
+    $('.character_impersonation_option').remove();
+    $('.character_impersonation_chat_option').remove();
+    removeFloatingButton();
+    
+    // Re-add if extension is enabled
+    if (extensionSettings.enabled) {
+        addFloatingButton();
+        addToMessageOptionsMenu();
+    }
+}
 function createSettingsHTML() {
     return `
         <div class="character-impersonation-settings">
@@ -392,8 +606,10 @@ function initSettingsUI() {
 function registerSlashCommands() {
     // Check if registerSlashCommand is available (legacy method)
     if (typeof registerSlashCommand === 'function') {
-        // Main impersonation command
-        registerSlashCommand('impersonate', async (args, value) => {
+        console.log('[Character Impersonation] Registering slash commands...');
+        
+        // Main impersonation command - changed to /roleplay since /impersonate exists
+        registerSlashCommand('roleplay', async (args, value) => {
             if (!extensionSettings.enabled) {
                 return "Character Impersonation extension is disabled. Enable it in the extension settings.";
             }
@@ -404,17 +620,17 @@ function registerSlashCommands() {
                 let input = value || '';
                 
                 // Check for prompt= parameter
-                if (args && args.prompt) {
+                if (args && typeof args === 'object' && args.prompt) {
                     customPrompt = args.prompt;
                 }
                 
                 const response = await impersonateCharacter(input, customPrompt);
-                return `Impersonation complete. Response generated as ${getCurrentCharacterInfo()?.name || 'character'}.`;
+                return `Roleplay complete. Response generated as ${getCurrentCharacterInfo()?.name || 'character'}.`;
             } catch (error) {
                 console.error('[Character Impersonation] Error:', error);
                 return `Error: ${error.message}`;
             }
-        }, ['imp', 'roleplay'], '<span class="monospace">prompt=(custom system prompt)</span> (message) – Generate a response as your current character', true, true);
+        }, ['rp'], '<span class="monospace">prompt=(custom system prompt)</span> (message) – Generate a response as your current character', true, true);
         
         // Command to set custom system prompt
         registerSlashCommand('setimprompt', (args, value) => {
@@ -429,8 +645,10 @@ function registerSlashCommands() {
         }, ['setprompt'], '(new prompt) – Set or view the custom system prompt for impersonation', true, true);
         
         console.log('[Character Impersonation] Slash commands registered successfully using legacy method');
+        return true;
     } else {
         console.warn('[Character Impersonation] registerSlashCommand not available, commands not registered');
+        return false;
     }
 }
 
@@ -458,17 +676,31 @@ function init() {
         
         // Register slash commands
         try {
-            registerSlashCommands();
-            console.log('[Character Impersonation] Slash commands registration attempted');
+            const commandsRegistered = registerSlashCommands();
+            if (commandsRegistered) {
+                console.log('[Character Impersonation] Slash commands registered successfully');
+            }
         } catch (commandError) {
             console.error('[Character Impersonation] Failed to register slash commands:', commandError);
         }
         
-        // Initialize settings UI when ready
+        // Make functions globally available for UI interaction
+        window.showImpersonationModal = showImpersonationModal;
+        window.updateUIElements = updateUIElements;
+        window.testCharacterImpersonation = testCharacterImpersonation;
+        console.log('[Character Impersonation] Functions made globally available');
+        
+        // Initialize UI integrations
         if (diagnostics.jQuery) {
-            console.log('[Character Impersonation] jQuery available, setting up UI initialization...');
+            console.log('[Character Impersonation] jQuery available, setting up UI integrations...');
             
-            // Try immediate initialization
+            // Set up UI elements after a short delay
+            setTimeout(() => {
+                updateUIElements();
+                console.log('[Character Impersonation] UI elements initialized');
+            }, 1000);
+            
+            // Initialize settings UI when ready
             setTimeout(() => {
                 initSettingsUI();
             }, 500);
@@ -478,22 +710,32 @@ function init() {
                 console.log('[Character Impersonation] Document ready, attempting UI init...');
                 setTimeout(() => {
                     initSettingsUI();
+                    updateUIElements();
                 }, 1000);
             });
             
-            // Also try when extensions are loaded
-            $(document).on('extensionsReady', () => {
-                console.log('[Character Impersonation] Extensions ready event, attempting UI init...');
+            // Listen for character changes
+            $(document).on('character_selected', () => {
+                console.log('[Character Impersonation] Character selected, updating UI...');
                 setTimeout(() => {
-                    initSettingsUI();
+                    updateUIElements();
                 }, 500);
             });
             
-            // Additional event listeners for various extension loading events
-            $(document).on('extensionsLoaded', () => {
-                console.log('[Character Impersonation] Extensions loaded event, attempting UI init...');
+            // Listen for chat changes
+            $(document).on('chatLoaded', () => {
+                console.log('[Character Impersonation] Chat loaded, updating UI...');
+                setTimeout(() => {
+                    updateUIElements();
+                }, 500);
+            });
+            
+            // Also try when extensions are loaded
+            $(document).on('extensionsReady extensionsLoaded', () => {
+                console.log('[Character Impersonation] Extensions ready/loaded event, updating UI...');
                 setTimeout(() => {
                     initSettingsUI();
+                    updateUIElements();
                 }, 500);
             });
             
@@ -506,7 +748,8 @@ function init() {
         }
         
         console.log('[Character Impersonation] Extension initialization completed!');
-        console.log('[Character Impersonation] Available commands: /impersonate, /imp, /roleplay, /setimprompt, /setprompt');
+        console.log('[Character Impersonation] Available commands: /roleplay, /rp, /setimprompt, /setprompt');
+        console.log('[Character Impersonation] UI: Floating button and modal dialog available');
         
         return true;
         
@@ -547,7 +790,38 @@ window.testCharacterImpersonation = function() {
         const chatHistory = getChatHistory(5);
         console.log('Recent chat history:', chatHistory);
         
+        // Test slash command availability
+        console.log('Testing slash commands...');
+        if (typeof registerSlashCommand === 'function') {
+            console.log('✓ registerSlashCommand is available');
+        } else {
+            console.log('✗ registerSlashCommand is NOT available');
+        }
+        
+        // Test modal function
+        console.log('Testing modal function...');
+        if (typeof window.showImpersonationModal === 'function') {
+            console.log('✓ showImpersonationModal is globally available');
+        } else {
+            console.log('✗ showImpersonationModal is NOT globally available');
+        }
+        
+        // Test UI elements
+        console.log('Testing UI elements...');
+        const floatingBtn = $('#character_impersonation_float_btn');
+        console.log('Floating button found:', floatingBtn.length > 0);
+        
+        const settingsPanel = $('.character-impersonation-settings');
+        console.log('Settings panel found:', settingsPanel.length > 0);
+        
         console.log('[Character Impersonation] Test completed successfully');
+        
+        // Provide quick commands for testing
+        console.log('\n--- Quick Test Commands ---');
+        console.log('Test modal: showImpersonationModal()');
+        console.log('Test slash command: Type "/roleplay Hello there!" in chat');
+        console.log('Update UI: updateUIElements()');
+        
         return true;
     } catch (error) {
         console.error('[Character Impersonation] Test failed:', error);

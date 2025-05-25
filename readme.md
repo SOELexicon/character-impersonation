@@ -34,13 +34,13 @@ This extension allows you to use your currently configured LLM to impersonate yo
 
 ### Basic Commands
 
-#### `/impersonate` (aliases: `/imp`, `/roleplay`)
+#### `/roleplay` (alias: `/rp`)
 Generate a response as your current character.
 
 **Examples:**
 ```
-/impersonate What do you think about the weather today?
-/imp
+/roleplay What do you think about the weather today?
+/rp Hello there!
 /roleplay prompt="Be more cheerful than usual" How are you feeling?
 ```
 
@@ -52,6 +52,22 @@ Set or view the custom system prompt for impersonation.
 /setimprompt
 /setimprompt You are feeling very happy today and respond enthusiastically to everything.
 ```
+
+### User Interface
+
+#### Floating Button
+- A floating "Roleplay" button appears in the bottom-right corner when a character is loaded
+- Click it to open the roleplay modal
+
+#### Modal Dialog
+- **Situation/Message**: Enter what you want the character to respond to
+- **Custom Instructions**: Optional temporary instructions (e.g., "be more cheerful")
+- **Current System Prompt**: Shows the active prompt that will be used
+- **Generate Response**: Creates the response and optionally adds it to chat
+
+#### Integration with Chat Options
+- The extension attempts to add a "Roleplay as [Character]" button to message menus
+- Look for it in message edit menus or chat options panels
 
 ### Configuration
 
@@ -143,9 +159,9 @@ If the extension is enabled but you don't see slash commands or the settings pan
    - Look for messages starting with `[Character Impersonation]`
    - The extension logs its initialization progress
 
-3. **Test Slash Commands**:
+3. **Test slash commands**:
    - Try typing `/help slash` in SillyTavern chat to see all available commands
-   - Look for `/impersonate` in the list
+   - Look for `/roleplay` in the list
    - If it's not there, the command registration failed
 
 4. **Check Settings Panel**:
@@ -154,8 +170,12 @@ If the extension is enabled but you don't see slash commands or the settings pan
    - If it doesn't appear, check console for UI initialization errors
 
 5. **Manual Command Test**:
-   - Try typing `/impersonate Hello` in chat
+   - Try typing `/roleplay Hello` in chat
    - Check console for any error messages
+
+6. **Check UI Elements**:
+   - Look for a floating "Roleplay" button in the bottom-right corner
+   - It should appear when you have a character loaded
 
 ### Common Issues and Solutions
 
@@ -182,6 +202,12 @@ You can use these commands in the browser console for debugging:
 ```javascript
 // Test the extension
 testCharacterImpersonation()
+
+// Test the modal dialog
+showImpersonationModal()
+
+// Update UI elements
+updateUIElements()
 
 // Check if SillyTavern is available
 typeof SillyTavern
@@ -220,11 +246,11 @@ SillyTavern.getContext().extensionSettings.character_impersonation
 You can create different prompts for different scenarios:
 
 ```
-/impersonate prompt="You are in a formal meeting and need to be professional" What's your opinion on the proposal?
+/roleplay prompt="You are in a formal meeting and need to be professional" What's your opinion on the proposal?
 
-/impersonate prompt="You're feeling playful and mischievous today" *looks around the room*
+/roleplay prompt="You're feeling playful and mischievous today" *looks around the room*
 
-/impersonate prompt="Respond as if you're tired and want to go to sleep" Good morning!
+/roleplay prompt="Respond as if you're tired and want to go to sleep" Good morning!
 ```
 
 ### Integration with STScript
@@ -232,8 +258,18 @@ You can create different prompts for different scenarios:
 The extension commands can be used in STScript for automation:
 
 ```
-/impersonate {{getvar::user_message}} | /echo {{pipe}}
+/roleplay {{getvar::user_message}} | /echo {{pipe}}
 ```
+
+### Modal Dialog Usage
+
+The modal provides a more user-friendly interface:
+
+1. Click the floating "Roleplay" button or find it in chat menus
+2. Enter the situation or message in the text area
+3. Optionally add custom instructions
+4. Click "Generate Response"
+5. Choose whether to insert the response into the chat
 
 ## Contributing
 
