@@ -1,3 +1,8 @@
+// Modern imports for SillyTavern slash command system
+import { SlashCommandParser } from '../../../../slash-commands/SlashCommandParser.js';
+import { SlashCommand } from '../../../../slash-commands/SlashCommand.js';
+import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../../slash-commands/SlashCommandArgument.js';
+
 // Extension module name
 const MODULE_NAME = 'character_impersonation';
 
@@ -7,7 +12,8 @@ function runDiagnostics() {
         sillyTavernContext: typeof SillyTavern !== 'undefined' && SillyTavern.getContext,
         generateQuietPrompt: typeof generateQuietPrompt === 'function',
         jQuery: typeof $ !== 'undefined',
-        registerSlashCommand: typeof registerSlashCommand === 'function',
+        slashCommandParser: typeof SlashCommandParser !== 'undefined',
+        slashCommand: typeof SlashCommand !== 'undefined',
         callPopup: typeof callPopup === 'function',
         showLoader: typeof showLoader === 'function',
         hideLoader: typeof hideLoader === 'function'
@@ -602,172 +608,117 @@ function initSettingsUI() {
     }
 }
 
-// Register slash commands using the legacy method for better compatibility
+// Register slash commands using the modern SillyTavern API
 function registerSlashCommands() {
-    // Check if registerSlashCommand is available (legacy method)
-    if (typeof registerSlashCommand === 'function') {
-        console.log('[Character Impersonation] Registering slash commands...');
+    try {
+        console.log('[Character Impersonation] Registering slash commands using modern API...');
         
-        // Main impersonation command - changed to /roleplay since /impersonate exists
-        registerSlashCommand('roleplay', async (args, value) => {
-            if (!extensionSettings.enabled) {
-                return "Character Impersonation extension is disabled. Enable it in the extension settings.";
-            }
-            
-            try {
-                // Parse arguments - simple approach
-                let customPrompt = null;
-                let input = value || '';
+        // Main roleplay command
+        SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+            name: 'roleplay',
+            aliases: ['rp'],
+            callback: async (namedArgs, unnamedArgs) => {
+                // Access context within callback - this is the correct way
+                const context = SillyTavern.getContext();
+                const settings = context.extensionSettings[MODULE_NAME] || {};
                 
-                // Check for prompt= parameter
-                if (args && typeof args === 'object' && args.prompt) {
-                    customPrompt = args.prompt;
+                if (!settings.enabled) {
+                    return "Character Impersonation extension is disabled. Enable it in the extension settings.";
                 }
                 
-                const response = await impersonateCharacter(input, customPrompt);
-                return `Roleplay complete. Response generated as ${getCurrentCharacterInfo()?.name || 'character'}.`;
-            } catch (error) {
-                console.error('[Character Impersonation] Error:', error);
-                return `Error: ${error.message}`;
-            }
-        }, ['rp'], '<span class="monospace">prompt=(custom system prompt)</span> (message) – Generate a response as your current character', true, true);
+                try {
+                    const customPrompt = namedArgs.prompt || null;
+                    const input = unnamedArgs.toString().trim();
+                    
+                    const response = await impersonateCharacter(input, customPrompt);
+                    const character = getCurrentCharacterInfo();
+                    return `Roleplay complete. Response generated as ${character?.name || 'character'}.`;
+                } catch (error) {
+                    console.error('[Character Impersonation] Command error:', error);
+                    return `Error: ${error.message}`;
+                }
+            },
+            namedArgumentList: [
+                SlashCommandNamedArgument.fromProps({
+                    name: 'prompt',
+                    description: 'Custom system prompt to use instead of the default',
+                    typeList: [ARGUMENT_TYPE.STRING],
+                    defaultValue: '',
+                }),
+            ],
+            unnamedArgumentList: [
+                SlashCommandArgument.fromProps({
+                    description: 'The message or situation to respond to',
+                    typeList: [ARGUMENT_TYPE.STRING],
+                    isRequired: false,
+                }),
+            ],
+            helpString: `
+                <div>
+                    <div>Makes the current character respond to a message or situation using the configured LLM.</div>
+                    <div>
+                        <strong>Usage:</strong>
+                        <ul>
+                            <li><pre><code>/roleplay What do you think about the weather?</code></pre></li>
+                            <li><pre><code>/roleplay prompt="Be more cheerful than usual" How are you feeling?</code></pre></li>
+                            <li><pre><code>/rp</code></pre> (generates a response based on recent chat history)</li>
+                        </ul>
+                    </div>
+                    <div><strong>Note:</strong> Requires a character to be selected and the extension to be enabled.</div>
+                </div>
+            `,
+            returns: 'completion message'
+        }));
         
         // Command to set custom system prompt
-        registerSlashCommand('setimprompt', (args, value) => {
-            const newPrompt = value?.trim();
-            if (!newPrompt) {
-                return `Current custom system prompt: ${extensionSettings.customSystemPrompt || '(none - using default)'}`;
-            }
-            
-            extensionSettings.customSystemPrompt = newPrompt;
-            saveSettings();
-            return `Custom system prompt updated: ${newPrompt}`;
-        }, ['setprompt'], '(new prompt) – Set or view the custom system prompt for impersonation', true, true);
+        SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+            name: 'setimprompt',
+            aliases: ['setprompt'],
+            callback: (namedArgs, unnamedArgs) => {
+                // Access context within callback
+                const context = SillyTavern.getContext();
+                let settings = context.extensionSettings[MODULE_NAME];
+                if (!settings) {
+                    settings = context.extensionSettings[MODULE_NAME] = Object.assign({}, defaultSettings);
+                }
+                
+                const newPrompt = unnamedArgs.toString().trim();
+                if (!newPrompt) {
+                    return `Current custom system prompt: ${settings.customSystemPrompt || '(none - using default)'}`;
+                }
+                
+                settings.customSystemPrompt = newPrompt;
+                context.saveSettingsDebounced();
+                return `Custom system prompt updated: ${newPrompt}`;
+            },
+            unnamedArgumentList: [
+                SlashCommandArgument.fromProps({
+                    description: 'The new custom system prompt to use for impersonation',
+                    typeList: [ARGUMENT_TYPE.STRING],
+                    isRequired: false,
+                }),
+            ],
+            helpString: `
+                <div>
+                    <div>Sets or views the custom system prompt for character impersonation.</div>
+                    <div>
+                        <strong>Usage:</strong>
+                        <ul>
+                            <li><pre><code>/setimprompt</code></pre> (view current prompt)</li>
+                            <li><pre><code>/setimprompt You are feeling very happy today and respond enthusiastically to everything.</code></pre></li>
+                        </ul>
+                    </div>
+                </div>
+            `,
+            returns: 'confirmation message'
+        }));
         
-        console.log('[Character Impersonation] Slash commands registered successfully using legacy method');
-        return true;
-    } else {
-        console.warn('[Character Impersonation] registerSlashCommand not available, commands not registered');
-        return false;
-    }
-}
-
-// Extension initialization
-function init() {
-    try {
-        console.log('[Character Impersonation] Starting extension initialization...');
-        
-        // Run diagnostics to check available functions
-        const diagnostics = runDiagnostics();
-        
-        // Check if we have access to SillyTavern context
-        if (!diagnostics.sillyTavernContext) {
-            throw new Error('SillyTavern context not available');
-        }
-        
-        // Initialize settings
-        try {
-            initSettings();
-            console.log('[Character Impersonation] Settings initialized successfully');
-        } catch (settingsError) {
-            console.error('[Character Impersonation] Failed to initialize settings:', settingsError);
-            // Continue anyway, maybe we can still register commands
-        }
-        
-        // Register slash commands
-        try {
-            const commandsRegistered = registerSlashCommands();
-            if (commandsRegistered) {
-                console.log('[Character Impersonation] Slash commands registered successfully');
-            }
-        } catch (commandError) {
-            console.error('[Character Impersonation] Failed to register slash commands:', commandError);
-        }
-        
-        // Make functions globally available for UI interaction
-        window.showImpersonationModal = showImpersonationModal;
-        window.updateUIElements = updateUIElements;
-        window.testCharacterImpersonation = testCharacterImpersonation;
-        console.log('[Character Impersonation] Functions made globally available');
-        
-        // Initialize UI integrations
-        if (diagnostics.jQuery) {
-            console.log('[Character Impersonation] jQuery available, setting up UI integrations...');
-            
-            // Set up UI elements after a short delay
-            setTimeout(() => {
-                updateUIElements();
-                console.log('[Character Impersonation] UI elements initialized');
-            }, 1000);
-            
-            // Initialize settings UI when ready
-            setTimeout(() => {
-                initSettingsUI();
-            }, 500);
-            
-            // Use multiple methods to ensure UI initialization
-            $(document).ready(() => {
-                console.log('[Character Impersonation] Document ready, attempting UI init...');
-                setTimeout(() => {
-                    initSettingsUI();
-                    updateUIElements();
-                }, 1000);
-            });
-            
-            // Listen for character changes
-            $(document).on('character_selected', () => {
-                console.log('[Character Impersonation] Character selected, updating UI...');
-                setTimeout(() => {
-                    updateUIElements();
-                }, 500);
-            });
-            
-            // Listen for chat changes
-            $(document).on('chatLoaded', () => {
-                console.log('[Character Impersonation] Chat loaded, updating UI...');
-                setTimeout(() => {
-                    updateUIElements();
-                }, 500);
-            });
-            
-            // Also try when extensions are loaded
-            $(document).on('extensionsReady extensionsLoaded', () => {
-                console.log('[Character Impersonation] Extensions ready/loaded event, updating UI...');
-                setTimeout(() => {
-                    initSettingsUI();
-                    updateUIElements();
-                }, 500);
-            });
-            
-        } else {
-            console.warn('[Character Impersonation] jQuery not available, using fallback UI initialization');
-            // Fallback if jQuery is not available
-            setTimeout(() => {
-                initSettingsUI();
-            }, 2000);
-        }
-        
-        console.log('[Character Impersonation] Extension initialization completed!');
-        console.log('[Character Impersonation] Available commands: /roleplay, /rp, /setimprompt, /setprompt');
-        console.log('[Character Impersonation] UI: Floating button and modal dialog available');
-        
+        console.log('[Character Impersonation] Slash commands registered successfully using modern API');
         return true;
         
     } catch (error) {
-        console.error('[Character Impersonation] Failed to initialize extension:', error);
-        // Don't throw the error to prevent the extension from being disabled
+        console.error('[Character Impersonation] Failed to register slash commands:', error);
         return false;
-    }
-}
-
-// Make sure the extension starts after SillyTavern is ready
-function waitForSillyTavern() {
-    if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-        console.log('[Character Impersonation] SillyTavern detected, starting extension...');
-        init();
-    } else {
-        console.log('[Character Impersonation] Waiting for SillyTavern...');
-        setTimeout(waitForSillyTavern, 100);
     }
 }
 
@@ -792,10 +743,17 @@ window.testCharacterImpersonation = function() {
         
         // Test slash command availability
         console.log('Testing slash commands...');
-        if (typeof registerSlashCommand === 'function') {
-            console.log('✓ registerSlashCommand is available');
+        if (typeof SlashCommandParser !== 'undefined' && typeof SlashCommand !== 'undefined') {
+            console.log('✓ Modern slash command API is available');
         } else {
-            console.log('✗ registerSlashCommand is NOT available');
+            console.log('✗ Modern slash command API is NOT available');
+        }
+        
+        // Test legacy API
+        if (typeof registerSlashCommand === 'function') {
+            console.log('✓ Legacy registerSlashCommand is available (deprecated)');
+        } else {
+            console.log('✗ Legacy registerSlashCommand is NOT available');
         }
         
         // Test modal function
@@ -829,9 +787,115 @@ window.testCharacterImpersonation = function() {
     }
 };
 
-// Start the extension with error handling
-try {
-    waitForSillyTavern();
-} catch (error) {
-    console.error('[Character Impersonation] Critical error during extension startup:', error);
-}
+// Extension initialization using modern SillyTavern pattern
+(() => {
+    'use strict';
+    
+    // Register commands immediately when extension loads (modern SillyTavern way)
+    registerSlashCommands();
+    
+    // Extension initialization function
+    function init() {
+        try {
+            console.log('[Character Impersonation] Starting extension initialization...');
+            
+            // Run diagnostics to check available functions
+            const diagnostics = runDiagnostics();
+            
+            // Check if we have access to SillyTavern context
+            if (!diagnostics.sillyTavernContext) {
+                console.warn('[Character Impersonation] SillyTavern context not available yet, will retry...');
+                // Try again after a short delay
+                setTimeout(init, 500);
+                return false;
+            }
+            
+            // Initialize settings
+            try {
+                initSettings();
+                console.log('[Character Impersonation] Settings initialized successfully');
+            } catch (settingsError) {
+                console.error('[Character Impersonation] Failed to initialize settings:', settingsError);
+                // Continue anyway
+            }
+            
+            // Make functions globally available for UI interaction
+            window.showImpersonationModal = showImpersonationModal;
+            window.updateUIElements = updateUIElements;
+            window.testCharacterImpersonation = testCharacterImpersonation;
+            console.log('[Character Impersonation] Functions made globally available');
+            
+            // Initialize UI integrations
+            if (diagnostics.jQuery) {
+                console.log('[Character Impersonation] jQuery available, setting up UI integrations...');
+                
+                // Set up UI elements after a short delay
+                setTimeout(() => {
+                    updateUIElements();
+                    console.log('[Character Impersonation] UI elements initialized');
+                }, 1000);
+                
+                // Initialize settings UI when ready
+                setTimeout(() => {
+                    initSettingsUI();
+                }, 500);
+                
+                // Use multiple methods to ensure UI initialization
+                $(document).ready(() => {
+                    console.log('[Character Impersonation] Document ready, attempting UI init...');
+                    setTimeout(() => {
+                        initSettingsUI();
+                        updateUIElements();
+                    }, 1000);
+                });
+                
+                // Listen for character changes
+                $(document).on('character_selected', () => {
+                    console.log('[Character Impersonation] Character selected, updating UI...');
+                    setTimeout(() => {
+                        updateUIElements();
+                    }, 500);
+                });
+                
+                // Listen for chat changes
+                $(document).on('chatLoaded', () => {
+                    console.log('[Character Impersonation] Chat loaded, updating UI...');
+                    setTimeout(() => {
+                        updateUIElements();
+                    }, 500);
+                });
+                
+                // Also try when extensions are loaded
+                $(document).on('extensionsReady extensionsLoaded', () => {
+                    console.log('[Character Impersonation] Extensions ready/loaded event, updating UI...');
+                    setTimeout(() => {
+                        initSettingsUI();
+                        updateUIElements();
+                    }, 500);
+                });
+                
+            } else {
+                console.warn('[Character Impersonation] jQuery not available, using fallback UI initialization');
+                // Fallback if jQuery is not available
+                setTimeout(() => {
+                    initSettingsUI();
+                }, 2000);
+            }
+            
+            console.log('[Character Impersonation] Extension initialization completed!');
+            console.log('[Character Impersonation] Available commands: /roleplay, /rp, /setimprompt, /setprompt');
+            console.log('[Character Impersonation] UI: Floating button and modal dialog available');
+            
+            return true;
+            
+        } catch (error) {
+            console.error('[Character Impersonation] Failed to initialize extension:', error);
+            // Don't throw the error to prevent the extension from being disabled
+            return false;
+        }
+    }
+    
+    // Start initialization immediately
+    init();
+    
+})();

@@ -212,9 +212,15 @@ updateUIElements()
 // Check if SillyTavern is available
 typeof SillyTavern
 
-// Check specific functions
-typeof generateQuietPrompt
+// Check modern slash command API
+typeof SlashCommandParser
+typeof SlashCommand
+
+// Check legacy API (deprecated)
 typeof registerSlashCommand
+
+// Check other functions
+typeof generateQuietPrompt
 
 // Check extension status
 SillyTavern.getContext().extensionSettings.character_impersonation
@@ -291,6 +297,12 @@ If you encounter issues or need help:
 3. Create an issue on the GitHub repository with detailed information about your problem
 
 ## Changelog
+
+### Version 1.0.1 (Current)
+- **Fixed**: Updated to use modern SillyTavern slash command API (`SlashCommandParser.addCommandObject`)
+- **Fixed**: Proper imports and command registration for current SillyTavern versions
+- **Improved**: Better error handling and diagnostics
+- **Added**: Comprehensive parameter definitions for better autocomplete support
 
 ### Version 1.0.0
 - Initial release
